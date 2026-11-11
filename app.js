@@ -7,6 +7,12 @@
   const FIELD_JA = { genre: 'ジャンル', period: '期間', note: 'ひとこと', trigger: 'きっかけ', points: '好きな所' };
 
   // ---------- 小道具 ----------
+  // 名前の中の「EB」だけを赤の太字にする(VEBANT = V + EB + ANT)。フォントは変えない
+  function brandName(name) {
+    const i = name.indexOf('EB');
+    if (i < 0) return [name];
+    return [name.slice(0, i), h('span', { class: 'eb' }, 'EB'), name.slice(i + 2)];
+  }
   function h(tag, a) {
     const e = document.createElement(tag);
     if (a) for (const k of Object.keys(a)) {
@@ -100,10 +106,10 @@
   const nowIdx = () => C.nowIdx(new Date());
 
   // ---------- タブ ----------
-  const TABS = [['tl', '年', '年表'], ['list', '推', '推し'], ['share', '合', '見せ合い'], ['vb', '遊', 'VEBANT'], ['more', '他', 'もっと']];
+  const TABS = [['tl', '年', '年表'], ['list', '推', '推し'], ['vb', 'V', 'VEBANT'], ['share', '見', '見せ合い'], ['more', '設', '設定']];
   function renderTabs() {
     tabsEl.textContent = '';
-    for (const [id, ic, label] of TABS) tabsEl.append(h('button', { class: 'tab', 'data-tab': id, 'aria-current': S.tab === id ? 'page' : null, onclick: () => { S.tab = id; renderTabs(); render(); window.scrollTo(0, 0); } }, h('span', { class: 'ic' }, ic), label));
+    for (const [id, ic, label] of TABS) tabsEl.append(h('button', { class: 'tab' + (id === 'vb' ? ' center' : ''), 'data-tab': id, 'aria-current': S.tab === id ? 'page' : null, onclick: () => { S.tab = id; renderTabs(); render(); window.scrollTo(0, 0); } }, h('span', { class: 'ic' }, ic), label));
   }
   function render() {
     view.textContent = '';
@@ -113,7 +119,7 @@
 
   // ---------- 年表 ----------
   function renderTimeline() {
-    view.append(h('h1', null, window.APP_NAME || '推し遍歴'), h('p', { class: 'sub' }, 'これまでの推しを、年表にして残します。データはこの端末の中だけです。'));
+    view.append(h('h1', null, ...brandName(window.APP_NAME || '推し遍歴')), h('p', { class: 'sub' }, 'これまでの推しを、年表にして残します。データはこの端末の中だけです。'));
     if (!S.oshi.length) {
       view.append(h('div', { class: 'empty' }, h('p', null, 'まだ誰も登録されていません。'), h('p', { class: 'sub' }, '好きになった順でなくても大丈夫です。思い出した人から足せます。'),
         h('div', { class: 'btns' }, h('button', { class: 'btn primary block', onclick: () => editOshi(null) }, '最初の推しを足す'), h('button', { class: 'btn quiet block', onclick: addSamples }, '見本(架空の4人)を入れて見てみる'))),
@@ -312,7 +318,7 @@
     text = String(text || '').trim(); if (!text) { toast('コードを貼ってください'); return; }
     try {
       let dec;
-      if (text[0] === '{') { const j = JSON.parse(text); dec = { prefix: 'OH1', data: j.app === 'oshi-henreki' ? null : j }; if (!dec.data) { toast('これはバックアップファイルです。「もっと」から取り込んでください'); return; } }
+      if (text[0] === '{') { const j = JSON.parse(text); dec = { prefix: 'OH1', data: j.app === 'oshi-henreki' ? null : j }; if (!dec.data) { toast('これはバックアップファイルです。「設定」から取り込んでください'); return; } }
       else dec = await C.decodeCode(text);
       if (dec.prefix === 'OH1') return friendPreview(C.parseShare(dec.data));
       if (dec.prefix === 'VB1') { S.tab = 'vb'; renderTabs(); render(); return addPlayerFromCard(dec.data); }
@@ -567,7 +573,7 @@
 
   // ---------- もっと ----------
   function renderMore() {
-    view.append(h('h1', null, 'もっと'));
+    view.append(h('h1', null, '設定'));
     view.append(h('h2', null, '見た目'), h('div', { class: 'seg' }, ...[['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']].map(([k, t]) => h('button', { 'aria-pressed': S.theme === k, 'data-theme-btn': k, onclick: async () => { S.theme = k; applyTheme(k); await DB.kvSet('theme', k); render(); } }, t))));
     view.append(h('h2', null, 'バックアップ'), h('p', { class: 'sub', id: 'last-backup' }, S.lastBackup ? '最後に書き出した日: ' + S.lastBackup : 'まだ書き出していません。端末を変えたり、ブラウザのデータを消したりすると、記録は消えます。時々書き出しておくと安心です。'),
       h('div', { class: 'btns' },
