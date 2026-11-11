@@ -33,12 +33,16 @@
   function add(e, c) {
     if (c == null || c === false) return;
     if (Array.isArray(c)) c.forEach((x) => add(e, x));
-    else e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    else if (c.nodeType) e.append(c);
+    else {
+      const t = String(c), parts = t.split('VEBANT');
+      parts.forEach((p, i) => { if (i) e.append(document.createTextNode('V'), h('span', { class: 'eb' }, 'EB'), document.createTextNode('ANT')); if (p) e.append(document.createTextNode(p)); });
+    }
   }
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
   const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
   let toastT = 0;
-  function toast(msg) { toastEl.textContent = msg; toastEl.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { toastEl.hidden = true; }, 2600); }
+  function toast(msg) { toastEl.textContent = ''; add(toastEl, msg); toastEl.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { toastEl.hidden = true; }, 2600); }
   async function copyText(t) {
     try { await navigator.clipboard.writeText(t); toast('コピーしました'); return true; } catch (e) { /* 下へ */ }
     const ta = h('textarea', { value: t, readOnly: true }); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.append(ta); ta.select();
@@ -63,6 +67,19 @@
     return new Promise((r) => c.toBlob(r, 'image/jpeg', 0.85));
   }
 
+  // ファイルを選ぶ大きなボタン+選んだ名前+結果。onFile(file) は {ok,msg} を返す
+  function filePicker(o) {
+    const nm = h('div', { class: 'fname' }), rs = h('div', { class: 'fres' });
+    const st = h('div', { class: 'fstatus', role: 'status', 'data-status': o.id }, nm, rs);
+    const show = (ok, msg) => { st.className = 'fstatus ' + (ok ? 'ok' : 'ng'); rs.textContent = (ok ? '✓ ' : '× ') + msg; };
+    const inp = h('input', { type: 'file', accept: o.accept, id: o.id, class: 'vh', tabindex: '-1', 'aria-label': o.label, onchange: async (e) => {
+      const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+      st.className = 'fstatus has'; nm.textContent = '選んだファイル: ' + f.name; rs.textContent = '';
+      try { const r = await o.onFile(f, show); if (r) show(r.ok, r.msg); } catch (er) { show(false, '読み込めませんでした: ' + er.message); }
+    } });
+    return h('div', { class: 'picker' }, h('button', { type: 'button', class: 'btn block', id: o.id + '-btn', onclick: () => inp.click() }, o.label), h('div', { class: 'sub' }, o.hint), inp, st);
+  }
+
   // ---------- シート ----------
   function sheet(title, build, right) {
     const page = h('div', { class: 'page' });
@@ -80,7 +97,7 @@
   }
   function confirmBox(msg, label, danger) {
     return new Promise((res) => modal((sh, close) => {
-      sh.append(h('p', { text: msg }), h('div', { class: 'btns two' },
+      sh.append(h('p', null, msg), h('div', { class: 'btns two' },
         h('button', { class: 'btn quiet', onclick: () => { close(); res(false); } }, 'やめる'),
         h('button', { class: 'btn ' + (danger ? 'danger' : 'primary'), onclick: () => { close(); res(true); } }, label || 'OK')));
     }));
@@ -95,13 +112,10 @@
     S.vgame = await DB.kvGet('vgame', null);
     S.vmission = await DB.kvGet('vmission', null);
     S.vcard = await DB.kvGet('vcard', null);
-    const th = await DB.kvGet('theme', 'auto'); applyTheme(th);
-    S.theme = th;
     for (const k of Object.keys(S.urls)) { URL.revokeObjectURL(S.urls[k]); }
     S.urls = {};
     for (const o of S.oshi) if (o.hasPhoto) { const r = await DB.get('photos', o.id); if (r && r.blob) S.urls[o.id] = URL.createObjectURL(r.blob); }
   }
-  function applyTheme(t) { if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme'); }
   async function refresh() { await load(); renderTabs(); render(); }
   const nowIdx = () => C.nowIdx(new Date());
 
@@ -109,7 +123,7 @@
   const TABS = [['tl', '年', '年表'], ['list', '推', '推し'], ['vb', 'V', 'VEBANT'], ['share', '見', '見せ合い'], ['more', '設', '設定']];
   function renderTabs() {
     tabsEl.textContent = '';
-    for (const [id, ic, label] of TABS) tabsEl.append(h('button', { class: 'tab' + (id === 'vb' ? ' center' : ''), 'data-tab': id, 'aria-current': S.tab === id ? 'page' : null, onclick: () => { S.tab = id; renderTabs(); render(); window.scrollTo(0, 0); } }, h('span', { class: 'ic' }, ic), label));
+    for (const [id, ic, label] of TABS) tabsEl.append(h('button', { class: 'tab' + (id === 'vb' ? ' center' : ''), 'data-tab': id, 'aria-current': S.tab === id ? 'page' : null, onclick: () => { S.tab = id; renderTabs(); render(); window.scrollTo(0, 0); } }, h('span', { class: 'ic' }, ic), h('span', { class: 'lb' }, label)));
   }
   function render() {
     view.textContent = '';
@@ -211,7 +225,7 @@
       const pts = h('textarea', { id: 'f-points', maxLength: C.LIM.text, placeholder: '好きな所' }); pts.value = o.points;
       const prev = h('div'); const showPrev = () => { prev.textContent = ''; const u = newPhoto ? URL.createObjectURL(newPhoto) : (!dropPhoto && cur && S.urls[cur.id]); if (u) prev.append(h('img', { class: 'photo', src: u, alt: '選んだ写真' }), h('button', { type: 'button', class: 'btn sm quiet', onclick: () => { newPhoto = null; dropPhoto = true; showPrev(); } }, '写真を外す')); };
       showPrev();
-      const file = h('input', { type: 'file', accept: 'image/*', id: 'f-photo', 'aria-label': '写真を選ぶ', onchange: async (e) => { const f = e.target.files[0]; if (!f) return; try { newPhoto = await shrink(f, 960); dropPhoto = false; showPrev(); } catch (er) { toast('この写真は読み込めませんでした'); } } });
+      const file = filePicker({ id: 'f-photo', accept: 'image/*', label: '写真を選ぶ', hint: '写真(jpg・png・heic など)を1枚。この端末の中だけに残ります', onFile: async (f) => { try { newPhoto = await shrink(f, 960); dropPhoto = false; showPrev(); return { ok: true, msg: '写真を選びました' }; } catch (er) { return { ok: false, msg: 'この写真は読み込めませんでした' }; } } });
       page.append(msg,
         h('label', { class: 'f', for: 'f-name' }, '名前 (必須)'), name,
         h('label', { class: 'f', for: 'f-genre' }, 'ジャンル (任意)'), genre,
@@ -220,7 +234,7 @@
         h('label', { class: 'f', for: 'f-note' }, 'ひとこと'), note,
         h('label', { class: 'f', for: 'f-trigger' }, 'きっかけ'), trig,
         h('label', { class: 'f', for: 'f-points' }, '好きな所'), pts,
-        h('label', { class: 'f', for: 'f-photo' }, '写真 (任意・この端末の中だけに残ります)'), file, prev,
+        h('label', { class: 'f' }, '写真 (任意)'), file, prev,
         h('div', { class: 'btns' }, h('button', { class: 'btn primary block', id: 'f-save', onclick: async () => {
           const rec = C.cleanOshi({ id: cur ? cur.id : uid(), name: name.value, genre: genre.value, from: from.value, to: o.ongoing ? '' : to.value, ongoing: o.ongoing, note: note.value, trigger: trig.value, points: pts.value, hasPhoto: newPhoto ? true : (dropPhoto ? false : !!(cur && cur.hasPhoto)), createdAt: cur ? cur.createdAt : Date.now(), updatedAt: Date.now() });
           const er = C.validateOshi(rec); if (er) { msg.textContent = er; msg.hidden = false; msg.scrollIntoView({ block: 'center' }); return; }
@@ -265,10 +279,10 @@
       h('button', { class: 'btn primary block', id: 'make-share', onclick: makeShare }, '共有コードをつくる'));
     // 受け取り
     const box = h('textarea', { id: 'in-code', class: 'code', placeholder: '友達から届いた共有コード、またはリンクをここに貼る' });
-    const fin = h('input', { type: 'file', accept: '.json,.txt,application/json,text/plain', 'aria-label': '共有ファイルを選ぶ', onchange: async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) incoming(await f.text()); } });
+    const fin = filePicker({ id: 'in-file', accept: '.json,.txt,application/json,text/plain', label: '共有ファイルを選んで読み込む', hint: '選ぶのは .json(友達から届いた共有ファイル)', onFile: async (f) => incoming(await f.text()) });
     view.append(h('h2', null, '友達の遍歴を読み込む'), box,
       h('div', { class: 'btns two' }, h('button', { class: 'btn primary', id: 'do-import', onclick: () => incoming(box.value) }, '読み込む'), h('button', { class: 'btn quiet', onclick: async () => { try { box.value = await navigator.clipboard.readText(); } catch (e) { toast('貼り付けできませんでした。入力欄を長押しして貼り付けてください'); } } }, '貼り付け')),
-      h('label', { class: 'f' }, 'または共有ファイル(.json)から'), fin);
+      h('label', { class: 'f' }, 'または、共有ファイルから'), fin);
     view.append(h('h2', null, '読み込んだ友達 (' + S.friends.length + ')'));
     if (!S.friends.length) view.append(h('p', { class: 'sub' }, 'まだいません。'));
     S.friends.forEach((f) => view.append(h('button', { class: 'list-row', 'data-friend': f.id, onclick: () => compareSheet(f.id) }, h('div', { class: 'grow' }, h('div', { style: 'font-weight:700;font-size:18px' }, f.nick), h('div', { class: 'sub' }, f.items.length + '件 / ' + (f.date || '日付なし') + ' / 見せてもらった項目: ' + (['名前'].concat(f.fields.map((k) => FIELD_JA[k])).join('・')))), h('span', { 'aria-hidden': 'true' }, '›'))));
@@ -310,20 +324,22 @@
       x.fillStyle = '#25221e'; x.font = font(28); for (const l of b.body) { yy += 40; x.fillText(l, pad + 30, yy); }
       y += b.hh;
     }
-    x.fillStyle = '#5d574d'; x.font = font(22); x.fillText((window.APP_NAME || '推し遍歴') + ' で作成', pad, H - 40);
+    x.font = font(22); let fx = pad; const seg = (window.APP_NAME || '推し遍歴').split('EB');
+    const put = (t, col, w) => { x.fillStyle = col; x.font = font(22, w); x.fillText(t, fx, H - 40); fx += x.measureText(t).width; };
+    if (seg.length === 2) { put(seg[0], '#5d574d'); put('EB', '#E50914', '900'); put(seg[1] + ' で作成', '#5d574d'); } else put(seg.join('EB') + ' で作成', '#5d574d');
     return new Promise((r) => c.toBlob(r, 'image/png'));
   }
   // 受け取り口(貼り付け・リンク・ファイル共通)
   async function incoming(text) {
-    text = String(text || '').trim(); if (!text) { toast('コードを貼ってください'); return; }
+    text = String(text || '').trim(); if (!text) { toast('コードを貼ってください'); return { ok: false, msg: 'コードが見つかりません' }; }
     try {
       let dec;
-      if (text[0] === '{') { const j = JSON.parse(text); dec = { prefix: 'OH1', data: j.app === 'oshi-henreki' ? null : j }; if (!dec.data) { toast('これはバックアップファイルです。「設定」から取り込んでください'); return; } }
+      if (text[0] === '{') { const j = JSON.parse(text); dec = { prefix: 'OH1', data: j.app === 'oshi-henreki' ? null : j }; if (!dec.data) { toast('これはバックアップファイルです。「設定」から取り込んでください'); return { ok: false, msg: 'これはバックアップファイルです。「設定」から取り込んでください' }; } }
       else dec = await C.decodeCode(text);
-      if (dec.prefix === 'OH1') return friendPreview(C.parseShare(dec.data));
-      if (dec.prefix === 'VB1') { S.tab = 'vb'; renderTabs(); render(); return addPlayerFromCard(dec.data); }
-      if (dec.prefix === 'VD1') { S.tab = 'vb'; renderTabs(); render(); return openMissionFromDelivery(C.parseDelivery(dec.data)); }
-    } catch (e) { toast('読み込めませんでした: ' + (e.message || e)); }
+      if (dec.prefix === 'OH1') { friendPreview(C.parseShare(dec.data)); return { ok: true, msg: '読み込めました。内容を確認して「保存して比べる」を押してください' }; }
+      if (dec.prefix === 'VB1') { S.tab = 'vb'; renderTabs(); render(); addPlayerFromCard(dec.data); return { ok: true, msg: 'VEBANTの参加カードとして読み込みました' }; }
+      if (dec.prefix === 'VD1') { S.tab = 'vb'; renderTabs(); render(); openMissionFromDelivery(C.parseDelivery(dec.data)); return { ok: true, msg: '配布コードとして開きました' }; }
+    } catch (e) { toast('読み込めませんでした: ' + (e.message || e)); return { ok: false, msg: '読み込めませんでした: ' + (e.message || e) }; }
   }
   function friendPreview(sh) {
     const dup = S.friends.find((f) => f.id === fid(sh));
@@ -574,13 +590,12 @@
   // ---------- もっと ----------
   function renderMore() {
     view.append(h('h1', null, '設定'));
-    view.append(h('h2', null, '見た目'), h('div', { class: 'seg' }, ...[['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']].map(([k, t]) => h('button', { 'aria-pressed': S.theme === k, 'data-theme-btn': k, onclick: async () => { S.theme = k; applyTheme(k); await DB.kvSet('theme', k); render(); } }, t))));
     view.append(h('h2', null, 'バックアップ'), h('p', { class: 'sub', id: 'last-backup' }, S.lastBackup ? '最後に書き出した日: ' + S.lastBackup : 'まだ書き出していません。端末を変えたり、ブラウザのデータを消したりすると、記録は消えます。時々書き出しておくと安心です。'),
       h('div', { class: 'btns' },
-        h('button', { class: 'btn primary block', id: 'ex-json', onclick: () => exportJSON(true) }, 'JSONで書き出す (写真つき・取り込み用)'),
+        h('button', { class: 'btn primary block', id: 'ex-json', onclick: () => exportJSON(true) }, 'JSONで書き出す (写真つき)'),
         h('button', { class: 'btn block', id: 'ex-json-np', onclick: () => exportJSON(false) }, 'JSONで書き出す (写真なし)'),
         h('button', { class: 'btn block', id: 'ex-csv', onclick: exportCSV }, 'CSVで書き出す (表計算用)')),
-      h('label', { class: 'f' }, '取り込む (JSON または CSV)'), h('input', { type: 'file', id: 'im-file', accept: '.json,.csv,text/csv,application/json', 'aria-label': 'バックアップファイルを選ぶ', onchange: async (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) importFile(await f.text(), f.name); } }));
+      h('label', { class: 'f' }, '取り込む'), filePicker({ id: 'im-file', accept: '.json,.csv,text/csv,application/json', label: 'ファイルを選んで取り込む', hint: '選ぶのは .json(このアプリで書き出したバックアップ)か .csv', onFile: async (f, show) => importFile(await f.text(), f.name, show) }));
     view.append(h('h2', null, 'データ'), h('div', { class: 'btns' },
       h('button', { class: 'btn block', onclick: addSamples }, '見本(架空の4人)を入れる'),
       h('button', { class: 'btn danger block', id: 'wipe', onclick: wipeAll }, 'この端末の記録をぜんぶ消す')));
@@ -595,7 +610,8 @@
     S.lastBackup = today(); await DB.kvSet('lastBackup', S.lastBackup); render();
   }
   async function exportCSV() { await saveFile('oshi-henreki-' + today() + '.csv', new Blob([C.toCSV(S.oshi)], { type: 'text/csv;charset=utf-8' })); S.lastBackup = today(); await DB.kvSet('lastBackup', S.lastBackup); render(); }
-  async function importFile(text, name) {
+  async function importFile(text, name, report) {
+    report = report || (() => {});
     try {
       let add = [], photos = {}, friends = [], skipped = 0, dup = 0, nick = '';
       const exist = new Set(S.oshi.map((o) => o.id)), existKey = new Set(S.oshi.map((o) => C.normName(o.name) + '|' + o.from));
@@ -609,13 +625,13 @@
         for (const o of r.items) { const k = C.normName(o.name) + '|' + o.from; if (existKey.has(k)) { dup++; continue; } existKey.add(k); o.id = uid(); o.createdAt = Date.now(); o.updatedAt = Date.now(); add.push(o); }
       }
       const msg = add.length + '件を追加します' + (friends.length ? '(友達 ' + friends.length + '人も)' : '') + '。すでにある ' + dup + '件はそのまま、読めなかった ' + skipped + '行は飛ばします。';
-      modal((m, close) => m.append(h('p', { 'data-test': 'import-msg' }, msg), h('div', { class: 'btns two' }, h('button', { class: 'btn quiet', onclick: close }, 'やめる'), h('button', { class: 'btn primary', id: 'import-ok', onclick: async () => {
+      modal((m, close) => m.append(h('p', { 'data-test': 'import-msg' }, msg), h('div', { class: 'btns two' }, h('button', { class: 'btn quiet', onclick: () => { close(); report(true, '取り込みをやめました'); } }, 'やめる'), h('button', { class: 'btn primary', id: 'import-ok', onclick: async () => {
         for (const o of add) { const t = Date.now(); o.createdAt = o.createdAt || t; await DB.put('oshi', o); if (photos[o.id]) await DB.put('photos', { id: o.id, blob: photos[o.id] }); }
         for (const f of friends) await DB.put('friends', f);
         if (nick && !S.nick) { S.nick = nick; await DB.kvSet('nick', nick); }
-        close(); toast('取り込みました'); await refresh();
+        close(); toast('取り込みました'); report(true, add.length + '件を取り込みました'); await refresh();
       } }, '取り込む'))));
-    } catch (e) { toast('取り込めませんでした: ' + e.message); }
+    } catch (e) { toast('取り込めませんでした: ' + e.message); report(false, '取り込めませんでした: ' + e.message); }
   }
   async function wipeAll() {
     if (!(await confirmBox('推し・写真・友達・VEBANTのデータを、この端末からぜんぶ消します。元に戻せません。先に書き出しておくと安心です。', 'ぜんぶ消す', true))) return;
